@@ -1,0 +1,711 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>新竹市北區潮汐與釣魚建議</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <style>
+    :root{
+      --bg:#07131f;--panel:#0e2233;--panel2:#102a3e;--text:#eaf6ff;
+      --muted:#92adc0;--line:#1d425b;--accent:#5bd2ff;--high:#5bd2ff;
+      --low:#ffb86b;--good:#65e6a5;--danger:#ff7b89;
+      --header-h:72px;--gap:12px;
+    }
+    *{box-sizing:border-box}
+    html,body{width:100%;height:100%;overflow:hidden}
+    body{
+      margin:0;font-family:system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif;
+      color:var(--text);background:
+      radial-gradient(circle at 15% 0%,#12344b 0,transparent 34%),
+      linear-gradient(180deg,#07131f,#091923 70%);
+    }
+    button,input,textarea,select{font:inherit}
+    button{border:0;border-radius:10px;padding:8px 12px;cursor:pointer;background:var(--accent);color:#052033;font-weight:760}
+    button.secondary{background:#173a50;color:#dff5ff;border:1px solid #2d5770}
+    button.icon-btn{width:42px;height:42px;padding:0;display:grid;place-items:center;font-size:20px}
+    input,textarea,select{width:100%;background:#081b29;color:var(--text);border:1px solid #285068;border-radius:10px;padding:10px}
+    textarea{min-height:105px;resize:vertical}
+
+    .app{height:100vh;padding:12px;display:grid;grid-template-rows:var(--header-h) minmax(0,1.45fr) minmax(220px,.9fr);gap:var(--gap)}
+    .topbar{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:0 4px}
+    .title-wrap{min-width:0}
+    h1{font-size:clamp(22px,2.4vw,34px);margin:0 0 4px;letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .sub{color:var(--muted);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .top-actions{display:flex;align-items:center;gap:8px;flex:0 0 auto}
+    .badge{white-space:nowrap;border:1px solid #2c5269;background:#0b1e2c;padding:8px 11px;border-radius:999px;color:#bfe9ff;font-size:13px;max-width:240px;overflow:hidden;text-overflow:ellipsis}
+
+    .middle{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(320px,.8fr);gap:var(--gap);min-height:0}
+    .card{min-height:0;background:linear-gradient(180deg,rgba(16,42,62,.95),rgba(10,30,44,.98));border:1px solid #1b4057;border-radius:16px;padding:14px;box-shadow:0 14px 36px rgba(0,0,0,.20);overflow:hidden}
+    .panel-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
+    .panel-head h2{font-size:17px;margin:0}
+    .controls{display:flex;flex-wrap:wrap;gap:7px}
+    .controls button{padding:7px 10px;font-size:13px}
+    .controls button.active{background:var(--accent);color:#052033;border-color:transparent;box-shadow:0 0 0 2px rgba(91,210,255,.18)}
+    .window-controls{display:flex;gap:5px;padding:3px;background:#081b29;border:1px solid #234a62;border-radius:12px}
+    .chart-card{display:grid;grid-template-rows:auto minmax(0,1fr) auto}
+    .chart-box{min-height:0;height:100%}
+    .status{font-size:12px;color:var(--muted);line-height:1.45;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+    .recommend-card{display:grid;grid-template-rows:auto auto minmax(0,1fr)}
+    .summary{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-bottom:8px}
+    .metric{background:#091d2c;border:1px solid #21475f;border-radius:11px;padding:9px;min-width:0}
+    .metric b{display:block;font-size:18px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .metric span{color:var(--muted);font-size:11px}
+    .recommend-list{display:grid;gap:7px;overflow:auto;padding-right:3px;align-content:start}
+    .rec{padding:10px;border-radius:11px;background:#0a1e2d;border:1px solid #214960}
+    .rec.top{border-color:#3a9d74;background:linear-gradient(90deg,rgba(41,122,88,.20),#0a1e2d)}
+    .rec-head{display:flex;justify-content:space-between;gap:10px;align-items:center;font-size:13px}
+    .score{font-weight:800;color:var(--good)}
+    .time{font-size:15px;font-weight:800;margin:3px 0}
+    .why{color:var(--muted);font-size:11px;line-height:1.45}
+
+    .table-card{display:grid;grid-template-rows:auto minmax(0,1fr)}
+    .table-wrap{overflow:auto;border-radius:11px;border:1px solid #1f4359;min-height:0}
+    table{width:100%;border-collapse:collapse;min-width:690px;background:#091b29}
+    th,td{text-align:left;padding:8px 11px;border-bottom:1px solid #17394e;font-size:12px;white-space:nowrap}
+    th{position:sticky;top:0;z-index:1;background:#112b3e;color:#bfe9ff}
+    tr:hover td{background:#0e2638}
+    .pill{display:inline-block;padding:3px 7px;border-radius:999px;font-size:11px;font-weight:800}
+    .pill.high{background:rgba(91,210,255,.15);color:var(--high)}
+    .pill.low{background:rgba(255,184,107,.15);color:var(--low)}
+
+    .overlay{position:fixed;inset:0;background:rgba(2,9,15,.58);backdrop-filter:blur(4px);opacity:0;pointer-events:none;transition:.18s;z-index:20}
+    .overlay.open{opacity:1;pointer-events:auto}
+    .settings-panel{position:fixed;top:0;right:0;width:min(440px,92vw);height:100vh;background:#0b1d2b;border-left:1px solid #24485e;box-shadow:-20px 0 60px rgba(0,0,0,.35);transform:translateX(102%);transition:.22s;z-index:21;padding:18px;display:flex;flex-direction:column;gap:12px;overflow:auto}
+    .settings-panel.open{transform:translateX(0)}
+    .settings-head{display:flex;justify-content:space-between;align-items:center;gap:10px}
+    .settings-head h2{margin:0;font-size:20px}
+    .field{display:grid;gap:6px}
+    .field label{font-size:12px;color:#bfe9ff;font-weight:700}
+    .note{font-size:12px;color:var(--muted);line-height:1.6}
+    .settings-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .settings-actions .primary{grid-column:1/-1}
+    details{border-top:1px solid #1b4057;padding-top:10px}
+    summary{cursor:pointer;color:#bfe9ff;font-weight:700;font-size:13px}
+
+    @media(max-width:900px){
+      html,body{overflow:auto}
+      .app{height:auto;min-height:100vh;grid-template-rows:auto auto auto}
+      .topbar{align-items:flex-start}.sub{white-space:normal}.badge{display:none}
+      .middle{grid-template-columns:1fr;grid-template-rows:430px 420px}
+      .table-card{height:420px}
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="title-wrap">
+      <h1>新竹潮汐與釣魚建議</h1>
+      <div class="sub">潮汐曲線、滿乾潮時間與週末釣魚時段推薦</div>
+    </div>
+    <div class="top-actions">
+      <div class="badge" id="dataBadge">目前：示範資料</div>
+      <button id="settingsBtn" class="secondary icon-btn" aria-label="開啟設定" title="資料與地區設定">⚙</button>
+    </div>
+  </header>
+
+  <main class="middle">
+    <section class="card chart-card">
+      <div class="panel-head">
+        <h2>潮汐曲線</h2>
+        <div class="controls">
+          <button id="prevBtn" class="secondary" title="往前移動顯示區間">←</button>
+          <div class="window-controls" aria-label="潮汐圖顯示範圍">
+            <button class="secondary window-btn active" data-days="1">今天</button>
+            <button class="secondary window-btn" data-days="7">未來 7 天</button>
+            <button class="secondary window-btn" data-days="30">未來 30 天</button>
+          </div>
+          <button id="todayBtn" class="secondary">回到今天</button>
+          <button id="nextBtn" class="secondary" title="往後移動顯示區間">→</button>
+        </div>
+      </div>
+      <div class="chart-box"><canvas id="tideChart"></canvas></div>
+      <div class="status" id="chartStatus"></div>
+    </section>
+
+    <aside class="card recommend-card">
+      <div class="panel-head"><h2>推薦釣魚時段</h2></div>
+      <div class="summary">
+        <div class="metric"><span>最佳日期</span><b id="bestDate">—</b></div>
+        <div class="metric"><span>建議抵達</span><b id="bestArrival">—</b></div>
+        <div class="metric"><span>最高分</span><b id="bestScore">—</b></div>
+      </div>
+      <div class="recommend-list" id="recommendList"></div>
+    </aside>
+  </main>
+
+  <section class="card table-card">
+    <div class="panel-head"><h2>滿潮／乾潮時間表</h2></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>日期</th><th>星期</th><th>時間</th><th>潮別</th><th>潮高</th><th>釣魚評分</th></tr></thead>
+        <tbody id="tideTable"></tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<div class="overlay" id="settingsOverlay"></div>
+<aside class="settings-panel" id="settingsPanel" aria-hidden="true">
+  <div class="settings-head">
+    <h2>資料與地區設定</h2>
+    <button id="closeSettingsBtn" class="secondary icon-btn" aria-label="關閉設定">×</button>
+  </div>
+  <div class="note">使用中央氣象署 <b>F-A0021-001</b> 未來一個月潮汐預報。潮高採 AboveLocalMSL，並由公分換算為公尺。</div>
+
+  <div class="field">
+    <label for="locationSelect">預報區域</label>
+    <select id="locationSelect">
+      <option value="I00300" data-name="漁港新竹">漁港新竹（南寮，建議）</option>
+      <option value="10018020" data-name="新竹市北區">新竹市北區</option>
+      <option value="custom" data-name="">其他地區（輸入官方 LocationName）</option>
+    </select>
+  </div>
+  <div class="field" id="customLocationField" hidden>
+    <label for="customLocationName">官方地區名稱</label>
+    <input id="customLocationName" list="locationOptions" placeholder="例如：漁港基隆" />
+    <datalist id="locationOptions"></datalist>
+  </div>
+  <div class="field">
+    <label for="apiKey">中央氣象署 API 授權碼</label>
+    <input id="apiKey" type="password" autocomplete="off" placeholder="貼上 API key" />
+  </div>
+  <div class="settings-actions">
+    <button id="fetchBtn" class="primary">擷取真實資料</button>
+    <button id="clearKeyBtn" class="secondary">清除授權碼</button>
+    <button id="demoBtn" class="secondary">使用示範資料</button>
+  </div>
+  <div class="status" id="loadStatus">請選擇地區並輸入 API 授權碼。</div>
+  <div class="note">授權碼只儲存在這台瀏覽器的 localStorage。公開部署時，建議改由自己的後端代理 API。</div>
+
+  <details>
+    <summary>備用：貼上自訂 JSON</summary>
+    <textarea id="jsonInput" spellcheck="false" placeholder='[{"datetime":"2026-06-21T14:26:00+08:00","type":"滿潮","height":2.31}]'></textarea>
+    <button id="loadJsonBtn" style="margin-top:8px;width:100%">載入 JSON</button>
+  </details>
+</aside>
+
+<script>
+const TZ = 'Asia/Taipei';
+const WEEK = ['日','一','二','三','四','五','六'];
+let selectedDate = new Date();
+let chartWindowDays = 1;
+let events = makeDemoData();
+
+function isoLocal(d){
+  const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), day=String(d.getDate()).padStart(2,'0');
+  const h=String(d.getHours()).padStart(2,'0'), min=String(d.getMinutes()).padStart(2,'0');
+  return `${y}-${m}-${day}T${h}:${min}:00+08:00`;
+}
+function dateKey(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}
+function fmtDate(d){return `${d.getMonth()+1}/${d.getDate()}`}
+function fmtTime(d){return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`}
+function parseDate(s){return new Date(s)}
+
+function makeDemoData(){
+  const arr=[]; const base=new Date(); base.setHours(0,0,0,0);
+  // 明確標示為示範：只用來展示介面與演算法，不代表真實潮汐。
+  let highMinutes=10*60+25;
+  for(let i=0;i<21;i++){
+    const day=new Date(base); day.setDate(base.getDate()+i);
+    const shift=i*49;
+    const h1=(highMinutes+shift)%(24*60);
+    const l1=(h1+6*60+12)%(24*60);
+    const h2=(h1+12*60+25)%(24*60);
+    const l2=(h2+6*60+12)%(24*60);
+    [[h1,'滿潮',2.1+0.35*Math.sin(i/3)],[l1,'乾潮',0.45+0.18*Math.sin(i/4)],
+     [h2,'滿潮',2.0+0.30*Math.cos(i/3)],[l2,'乾潮',0.38+0.15*Math.cos(i/5)]]
+      .forEach(([mins,type,height])=>{
+        const d=new Date(day); d.setMinutes(mins);
+        if(mins>=1440)d.setDate(d.getDate()+1);
+        arr.push({datetime:isoLocal(d),type,height:+height.toFixed(2)});
+      });
+  }
+  return arr.sort((a,b)=>parseDate(a.datetime)-parseDate(b.datetime));
+}
+
+function scoreEvent(e){
+  if(e.type!=='滿潮') return null;
+  const d=parseDate(e.datetime), now=new Date();
+  const weekend=(d.getDay()===0||d.getDay()===6);
+  const hour=d.getHours()+d.getMinutes()/60;
+  const inWindow=hour>=12 && hour<=18;
+  const centerBonus=Math.max(0,1-Math.abs(hour-15)/3); // 15:00 最高
+  const daysAway=Math.max(0,(d-now)/(86400000));
+  const nearBonus=Math.max(0,1-daysAway/30);
+  let score=20;
+  if(weekend) score+=40;
+  if(inWindow) score+=25;
+  score+=Math.round(centerBonus*10);
+  score+=Math.round(nearBonus*5);
+  return Math.min(100,score);
+}
+
+function recommendations(){
+  return events.filter(e=>e.type==='滿潮' && parseDate(e.datetime)>=new Date())
+    .map(e=>({...e,score:scoreEvent(e)}))
+    .sort((a,b)=>b.score-a.score || parseDate(a.datetime)-parseDate(b.datetime))
+    .slice(0,5);
+}
+
+function renderRecommendations(){
+  const recs=recommendations(), box=document.getElementById('recommendList');
+  box.innerHTML='';
+  if(!recs.length){box.innerHTML='<div class="why">沒有可用的未來滿潮資料。</div>';return;}
+  const best=recs[0], bd=parseDate(best.datetime);
+  document.getElementById('bestDate').textContent=`${fmtDate(bd)}（${WEEK[bd.getDay()]}）`;
+  const arrival=new Date(bd.getTime()-90*60000);
+  document.getElementById('bestArrival').textContent=fmtTime(arrival);
+  document.getElementById('bestScore').textContent=best.score;
+  recs.forEach((r,i)=>{
+    const d=parseDate(r.datetime), arrival=new Date(d.getTime()-90*60000);
+    const weekend=d.getDay()===0||d.getDay()===6, h=d.getHours()+d.getMinutes()/60;
+    const reasons=[weekend?'週末':'平日',h>=12&&h<=18?'滿潮落在 12–18 時':'滿潮不在理想時窗',`建議滿潮前 90 分鐘抵達`];
+    const div=document.createElement('div'); div.className='rec '+(i===0?'top':'');
+    div.innerHTML=`<div class="rec-head"><b>${fmtDate(d)}（${WEEK[d.getDay()]}）</b><span class="score">${r.score} 分</span></div>
+      <div class="time">${fmtTime(arrival)} 抵達 → ${fmtTime(d)} 滿潮</div>
+      <div class="why">${reasons.join('・')}</div>`;
+    box.appendChild(div);
+  });
+}
+
+function renderTable(){
+  const tbody=document.getElementById('tideTable'); tbody.innerHTML='';
+  events.filter(e=>parseDate(e.datetime)>=new Date(Date.now()-86400000)).slice(0,100).forEach(e=>{
+    const d=parseDate(e.datetime), score=scoreEvent(e);
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td>${dateKey(d)}</td><td>週${WEEK[d.getDay()]}</td><td>${fmtTime(d)}</td>
+      <td><span class="pill ${e.type==='滿潮'?'high':'low'}">${e.type}</span></td>
+      <td>${Number.isFinite(+e.height)?(+e.height).toFixed(2)+' m':'—'}</td>
+      <td>${score===null?'—':score+' 分'}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+let chart;
+let chartRenderSequence=0;
+
+function getChartRange(){
+  const start=new Date(selectedDate);
+  start.setHours(0,0,0,0);
+  const end=new Date(start);
+  end.setDate(end.getDate()+chartWindowDays);
+  return {start,end};
+}
+
+function interpolateRange(){
+  const {start,end}=getChartRange();
+  const all=events.map(e=>({...e,d:parseDate(e.datetime)})).sort((a,b)=>a.d-b.d);
+  const relevant=all.filter(e=>e.d>=new Date(start.getTime()-12*3600000)&&e.d<=new Date(end.getTime()+12*3600000));
+  const stepMinutes=chartWindowDays===1?15:(chartWindowDays===7?30:90);
+  const points=[];
+
+  for(let t=start.getTime();t<=end.getTime();t+=stepMinutes*60000){
+    let prev=null,next=null;
+    for(const e of relevant){
+      if(e.d.getTime()<=t) prev=e;
+      if(e.d.getTime()>t){next=e;break;}
+    }
+    if(!prev||!next) continue;
+    const p=(t-prev.d)/(next.d-prev.d);
+    const eased=(1-Math.cos(Math.PI*p))/2;
+    const y=(+prev.height)+((+next.height)-(+prev.height))*eased;
+    points.push({x:new Date(t),y:+y.toFixed(3)});
+  }
+  return points;
+}
+
+function formatChartTick(value){
+  if(value===undefined||value===null||Number.isNaN(Number(value))) return '';
+  const d=new Date(value);
+  if(chartWindowDays===1) return fmtTime(d);
+  if(chartWindowDays===7) return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:00`;
+  return `${d.getMonth()+1}/${d.getDate()}`;
+}
+
+function formatTooltipTitle(items){
+  if(!Array.isArray(items)||!items.length) return '';
+  const raw=items[0]?.raw;
+  if(!raw?.x) return '';
+  const d=new Date(raw.x);
+  return `${dateKey(d)}（週${WEEK[d.getDay()]}） ${fmtTime(d)}`;
+}
+
+
+const tideAnnotationsPlugin={
+  id:'tideAnnotations',
+  afterDatasetsDraw(chart,args,pluginOptions){
+    const {ctx,chartArea,scales}=chart;
+    const xScale=scales.x, yScale=scales.y;
+    if(!xScale||!yScale) return;
+
+    const recommended=pluginOptions?.recommended || [];
+    ctx.save();
+    ctx.font=chartWindowDays===30?'600 9px system-ui':'700 11px system-ui';
+    ctx.textBaseline='middle';
+
+    recommended.forEach((item,index)=>{
+      const d=parseDate(item.datetime);
+      const x=xScale.getPixelForValue(d.getTime());
+      const y=yScale.getPixelForValue(+item.height);
+      if(x<chartArea.left||x>chartArea.right||y<chartArea.top||y>chartArea.bottom) return;
+
+      const arrival=new Date(d.getTime()-90*60000);
+      const label=chartWindowDays===30
+        ? `★ ${d.getMonth()+1}/${d.getDate()} ${fmtTime(d)}`
+        : `★ 推薦 ${fmtTime(arrival)}抵達｜${fmtTime(d)}滿潮`;
+
+      const padX=6, boxH=chartWindowDays===30?18:22;
+      const textW=ctx.measureText(label).width;
+      const boxW=textW+padX*2;
+      let boxX=x-boxW/2;
+      let boxY=y-boxH-13-(index%2)*4;
+      boxX=Math.max(chartArea.left+3,Math.min(boxX,chartArea.right-boxW-3));
+      if(boxY<chartArea.top+3) boxY=y+13;
+
+      ctx.strokeStyle='rgba(101,230,165,.85)';
+      ctx.lineWidth=1.5;
+      ctx.beginPath();
+      ctx.moveTo(x,y-3);
+      ctx.lineTo(x,boxY>y?boxY:boxY+boxH);
+      ctx.stroke();
+
+      ctx.fillStyle='rgba(7,31,35,.94)';
+      ctx.strokeStyle='#65e6a5';
+      ctx.lineWidth=1;
+      ctx.beginPath();
+      ctx.roundRect(boxX,boxY,boxW,boxH,6);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle='#9ff4c6';
+      ctx.fillText(label,boxX+padX,boxY+boxH/2);
+
+      ctx.fillStyle='#65e6a5';
+      ctx.beginPath();
+      ctx.arc(x,y,chartWindowDays===30?4:5,0,Math.PI*2);
+      ctx.fill();
+      ctx.strokeStyle='#06251b';
+      ctx.lineWidth=1.5;
+      ctx.stroke();
+    });
+    ctx.restore();
+  }
+};
+
+function renderChart(){
+  const renderSequence=++chartRenderSequence;
+  const {start,end}=getChartRange();
+  const rangeEvents=events.filter(e=>{
+    const d=parseDate(e.datetime);
+    return d>=start && d<end;
+  });
+  const lineData=interpolateRange();
+  const recommendedInRange=recommendations().filter(e=>{
+    const d=parseDate(e.datetime);
+    return d>=start && d<end;
+  });
+  const pointRadius=chartWindowDays===1?7:(chartWindowDays===7?4:2.5);
+  const maxTicks=chartWindowDays===1?9:(chartWindowDays===7?8:10);
+  const ctx=document.getElementById('tideChart');
+
+  document.querySelectorAll('.window-btn').forEach(btn=>{
+    btn.classList.toggle('active',Number(btn.dataset.days)===chartWindowDays);
+  });
+
+  // 自動載入、切換視窗或更新地區可能在很短時間內連續觸發 renderChart。
+  // 不只依賴本地 chart 變數，直接向 Chart.js 查詢此 canvas 是否已有實例並先銷毀。
+  const existingChart=Chart.getChart(ctx);
+  if(existingChart){
+    existingChart.destroy();
+  }
+  if(chart && chart!==existingChart){
+    try{chart.destroy();}catch(_err){}
+  }
+  chart=null;
+
+  // 若在準備資料期間已有更新的 renderChart 呼叫，放棄這次較舊的繪圖。
+  if(renderSequence!==chartRenderSequence) return;
+
+  chart=new Chart(ctx,{
+    type:'line',
+    plugins:[tideAnnotationsPlugin],
+    data:{
+      datasets:[
+        {label:'推估潮位',data:lineData,borderColor:'#5bd2ff',backgroundColor:'rgba(91,210,255,.12)',fill:true,tension:.32,pointRadius:0,borderWidth:chartWindowDays===30?1.7:2.5},
+        {label:'滿潮',data:rangeEvents.filter(e=>e.type==='滿潮').map(e=>({x:parseDate(e.datetime),y:+e.height})),showLine:false,pointRadius,pointHoverRadius:pointRadius+2,pointBackgroundColor:'#5bd2ff'},
+        {label:'乾潮',data:rangeEvents.filter(e=>e.type==='乾潮').map(e=>({x:parseDate(e.datetime),y:+e.height})),showLine:false,pointRadius,pointHoverRadius:pointRadius+2,pointBackgroundColor:'#ffb86b'}
+      ]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      interaction:{mode:'nearest',intersect:false},
+      plugins:{
+        legend:{labels:{color:'#d9efff'}},
+        tooltip:{callbacks:{title:formatTooltipTitle}},
+        tideAnnotations:{recommended:recommendedInRange}
+      },
+      scales:{
+        x:{
+          type:'linear',min:start.getTime(),max:end.getTime(),
+          afterBuildTicks:(scale)=>{
+            const ticks=[];
+            const stepHours=chartWindowDays===1?3:(chartWindowDays===7?12:24);
+            const cursor=new Date(start);
+            cursor.setMinutes(0,0,0);
+            if(chartWindowDays!==1) cursor.setHours(0);
+            while(cursor.getTime()<=end.getTime()){
+              ticks.push({value:cursor.getTime()});
+              cursor.setHours(cursor.getHours()+stepHours);
+            }
+            scale.ticks=ticks;
+          },
+          ticks:{
+            callback:formatChartTick,maxTicksLimit:maxTicks,maxRotation:0,
+            color:(context)=>{
+              const value=context?.tick?.value;
+              if(value===undefined||value===null) return '#91adbf';
+              const d=new Date(value);
+              return d.getHours()===0&&d.getMinutes()===0?'#eaf6ff':'#91adbf';
+            },
+            font:(context)=>{
+              const value=context?.tick?.value;
+              if(value===undefined||value===null) return {weight:'400',size:11};
+              const d=new Date(value);
+              return d.getHours()===0&&d.getMinutes()===0?{weight:'800',size:12}:{weight:'400',size:11};
+            }
+          },
+          grid:{
+            color:(context)=>{
+              const value=context?.tick?.value;
+              if(value===undefined||value===null) return 'rgba(72,113,137,.16)';
+              const d=new Date(value);
+              return d.getHours()===0&&d.getMinutes()===0?'rgba(234,246,255,.58)':'rgba(72,113,137,.16)';
+            },
+            lineWidth:(context)=>{
+              const value=context?.tick?.value;
+              if(value===undefined||value===null) return 1;
+              const d=new Date(value);
+              return d.getHours()===0&&d.getMinutes()===0?2:1;
+            }
+          }
+        },
+        y:{title:{display:true,text:'潮高（m）',color:'#91adbf'},ticks:{color:'#91adbf'},grid:{color:'rgba(72,113,137,.18)'}}
+      }
+    }
+  });
+
+  const rangeLabel=chartWindowDays===1
+    ? `${dateKey(start)}（週${WEEK[start.getDay()]}）`
+    : `${dateKey(start)}～${dateKey(new Date(end.getTime()-1))}`;
+  document.getElementById('chartStatus').textContent=
+    `${rangeLabel}，共 ${rangeEvents.length} 筆高低潮事件；${recommendedInRange.length} 個推薦時段已標註。粗亮垂直線代表每日 00:00。`;
+}
+function renderAll(){renderChart();renderRecommendations();renderTable()}
+
+function normalizeType(v){
+  const s=String(v??'');
+  if(/滿|high/i.test(s)) return '滿潮';
+  if(/乾|低|low/i.test(s)) return '乾潮';
+  return null;
+}
+function parseNormalized(data){
+  if(!Array.isArray(data)) throw new Error('最外層必須是陣列');
+  return data.map(x=>({
+    datetime:x.datetime||x.dateTime||x.DateTime||x.time,
+    type:normalizeType(x.type||x.tide||x.Tide||x.tideType||x.TideType),
+    height:Number(x.height??x.tideHeight??x.TideHeight??x.value)
+  })).filter(x=>x.datetime&&x.type&&Number.isFinite(x.height))
+    .sort((a,b)=>parseDate(a.datetime)-parseDate(b.datetime));
+}
+function deepExtractOfficial(obj, targetId, targetName){
+  const out=[];
+  const heightKeys=['AboveLocalMSL','aboveLocalMSL','AboveTWVD','aboveTWVD','AboveChartDatum','aboveChartDatum'];
+
+  function readLocation(v, inherited){
+    if(!v || typeof v!=='object') return inherited;
+    const directLocation=(v.Location && typeof v.Location==='object') ? v.Location : null;
+    const name=v.LocationName ?? v.locationName ?? directLocation?.LocationName ?? directLocation?.locationName ?? inherited?.name ?? '';
+    const id=String(v.LocationId ?? v.locationId ?? directLocation?.LocationId ?? directLocation?.locationId ?? inherited?.id ?? '');
+    return {name:String(name), id};
+  }
+
+  function findHeight(v){
+    if(!v || typeof v!=='object') return null;
+    for(const key of heightKeys){
+      if(v[key]!==undefined && v[key]!==null && v[key]!==''){
+        const n=Number(v[key]);
+        if(Number.isFinite(n)) return {value:n,key};
+      }
+    }
+    // 官方目前常把潮高包在 TideHeights 物件或陣列中。
+    const containers=[v.TideHeights,v.tideHeights,v.TideHeight,v.tideHeight];
+    for(const c of containers){
+      if(!c) continue;
+      const list=Array.isArray(c)?c:[c];
+      for(const item of list){
+        const found=findHeight(item);
+        if(found) return found;
+      }
+    }
+    return null;
+  }
+
+  function walk(v, inheritedLocation=null, inheritedRange=''){
+    if(!v || typeof v!=='object') return;
+    if(Array.isArray(v)){v.forEach(x=>walk(x,inheritedLocation,inheritedRange));return;}
+
+    const location=readLocation(v,inheritedLocation);
+    const tideRange=v.TideRange ?? v.tideRange ?? inheritedRange;
+    const datetime=v.DateTime ?? v.dateTime ?? v.datetime;
+    const tide=v.Tide ?? v.tide ?? v.TideType ?? v.tideType;
+    const height=findHeight(v);
+    const locationMatched=(location.id===String(targetId)) || location.name===targetName || location.name.includes(targetName);
+
+    if(datetime && tide && height && locationMatched){
+      const type=normalizeType(tide);
+      if(type){
+        // F-A0021-001 的潮高欄位單位為公分，統一換算成公尺。
+        out.push({
+          datetime:String(datetime), type,
+          height:height.value/100,
+          tideRange:String(tideRange || ''),
+          locationName:location.name,
+          locationId:location.id,
+          heightDatum:height.key
+        });
+      }
+    }
+    Object.values(v).forEach(child=>walk(child,location,tideRange));
+  }
+
+  walk(obj);
+  const unique=new Map();
+  out.forEach(e=>unique.set(`${e.datetime}|${e.type}`,e));
+  return [...unique.values()].sort((a,b)=>parseDate(a.datetime)-parseDate(b.datetime));
+}
+
+document.getElementById('prevBtn').onclick=()=>{selectedDate.setDate(selectedDate.getDate()-chartWindowDays);renderChart()};
+document.getElementById('nextBtn').onclick=()=>{selectedDate.setDate(selectedDate.getDate()+chartWindowDays);renderChart()};
+document.getElementById('todayBtn').onclick=()=>{selectedDate=new Date();renderChart()};
+document.querySelectorAll('.window-btn').forEach(btn=>{
+  btn.onclick=()=>{
+    chartWindowDays=Number(btn.dataset.days);
+    selectedDate=new Date();
+    renderChart();
+  };
+});
+document.getElementById('demoBtn').onclick=()=>{events=makeDemoData();selectedDate=new Date();document.getElementById('dataBadge').textContent='目前：示範資料';renderAll()};
+document.getElementById('loadJsonBtn').onclick=()=>{
+  try{
+    const parsed=parseNormalized(JSON.parse(document.getElementById('jsonInput').value));
+    if(parsed.length<2) throw new Error('至少需要兩筆含時間、潮別與潮高的資料');
+    events=parsed; selectedDate=parseDate(events[0].datetime);
+    document.getElementById('dataBadge').textContent='目前：自訂資料';
+    document.getElementById('loadStatus').textContent=`成功載入 ${events.length} 筆資料。`;
+    renderAll();
+    setSettingsOpen(false);
+  }catch(err){document.getElementById('loadStatus').textContent='載入失敗：'+err.message}
+};
+const apiKeyInput=document.getElementById('apiKey');
+const locationSelect=document.getElementById('locationSelect');
+const customLocationField=document.getElementById('customLocationField');
+const customLocationName=document.getElementById('customLocationName');
+const settingsPanel=document.getElementById('settingsPanel');
+const settingsOverlay=document.getElementById('settingsOverlay');
+
+function setSettingsOpen(open){
+  settingsPanel.classList.toggle('open',open);
+  settingsOverlay.classList.toggle('open',open);
+  settingsPanel.setAttribute('aria-hidden',String(!open));
+}
+document.getElementById('settingsBtn').onclick=()=>setSettingsOpen(true);
+document.getElementById('closeSettingsBtn').onclick=()=>setSettingsOpen(false);
+settingsOverlay.onclick=()=>setSettingsOpen(false);
+document.addEventListener('keydown',e=>{if(e.key==='Escape')setSettingsOpen(false)});
+
+apiKeyInput.value=localStorage.getItem('cwaApiKey') || '';
+const savedLocation=localStorage.getItem('cwaTideLocation') || 'I00300';
+const savedCustomName=localStorage.getItem('cwaCustomTideLocation') || '';
+locationSelect.value=[...locationSelect.options].some(o=>o.value===savedLocation)?savedLocation:'custom';
+customLocationName.value=savedCustomName;
+customLocationField.hidden=locationSelect.value!=='custom';
+
+document.getElementById('clearKeyBtn').onclick=()=>{
+  localStorage.removeItem('cwaApiKey');
+  apiKeyInput.value='';
+  document.getElementById('loadStatus').textContent='已清除這台瀏覽器儲存的授權碼。';
+};
+
+async function fetchOfficialData({auto=false}={}){
+  const key=apiKeyInput.value.trim();
+  if(!key){
+    document.getElementById('loadStatus').textContent='請先輸入中央氣象署 API 授權碼。';
+    if(auto) document.getElementById('dataBadge').textContent='目前：示範資料';
+    return;
+  }
+  const option=locationSelect.selectedOptions[0];
+  const isCustom=locationSelect.value==='custom';
+  const targetId=isCustom?'':locationSelect.value;
+  const targetName=(isCustom?customLocationName.value:option.dataset.name).trim();
+  const status=document.getElementById('loadStatus');
+  if(!targetName){status.textContent='請輸入中央氣象署使用的官方地區名稱。';return;}
+  status.textContent=`正在向中央氣象署載入「${targetName}」資料…`;
+  if(auto) document.getElementById('dataBadge').textContent=`載入中：${targetName}`;
+  try{
+    localStorage.setItem('cwaApiKey',key);
+    localStorage.setItem('cwaTideLocation',isCustom?'custom':targetId);
+    if(isCustom) localStorage.setItem('cwaCustomTideLocation',targetName);
+    const params=new URLSearchParams({Authorization:key,format:'JSON',LocationName:targetName});
+    let url=`https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-A0021-001?${params}`;
+    let res=await fetch(url,{headers:{Accept:'application/json'}});
+    if(!res.ok) throw new Error(`API 回應 HTTP ${res.status}`);
+    let data=await res.json();
+    if(data.success===false) throw new Error(data.message || '中央氣象署 API 回報失敗');
+
+    let parsed=deepExtractOfficial(data,targetId,targetName);
+    // 若 LocationName 篩選沒有回傳資料，再抓完整資料集後於前端比對地點。
+    if(parsed.length<2){
+      const fallbackParams=new URLSearchParams({Authorization:key,format:'JSON'});
+      url=`https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-A0021-001?${fallbackParams}`;
+      res=await fetch(url,{headers:{Accept:'application/json'}});
+      if(!res.ok) throw new Error(`完整資料 API 回應 HTTP ${res.status}`);
+      data=await res.json();
+      parsed=deepExtractOfficial(data,targetId,targetName);
+    }
+    if(parsed.length<2) throw new Error(`回傳內容中找不到「${targetName}」的滿乾潮資料。`);
+
+    events=parsed;
+    const todayKey=dateKey(new Date());
+    const todayEvent=events.find(e=>dateKey(parseDate(e.datetime))===todayKey);
+    selectedDate=todayEvent ? parseDate(todayEvent.datetime) : parseDate(events[0].datetime);
+    document.getElementById('dataBadge').textContent=`真實資料：${targetName}`;
+    const first=parseDate(events[0].datetime), last=parseDate(events.at(-1).datetime);
+    status.textContent=`載入成功：${events.length} 筆，範圍 ${dateKey(first)}～${dateKey(last)}；潮高基準為當地平均海平面。`;
+    renderAll();
+    if(!auto) setSettingsOpen(false);
+  }catch(err){
+    console.error(err);
+    status.textContent='真實資料載入失敗：'+err.message+'。請確認授權碼與網路連線；若直接以 file:// 開啟遭瀏覽器限制，可改用本機 HTTP server。';
+    if(auto) document.getElementById('dataBadge').textContent='自動載入失敗';
+  }
+}
+
+document.getElementById('fetchBtn').onclick=()=>fetchOfficialData();
+locationSelect.onchange=()=>{
+  customLocationField.hidden=locationSelect.value!=='custom';
+  localStorage.setItem('cwaTideLocation',locationSelect.value);
+};
+customLocationName.onchange=()=>localStorage.setItem('cwaCustomTideLocation',customLocationName.value.trim());
+
+renderAll();
+
+if(apiKeyInput.value.trim()){
+  // 讓畫面先完成初始渲染，再以 localStorage 中的設定自動載入真實資料。
+  setTimeout(()=>fetchOfficialData({auto:true}),0);
+}
+</script>
+</body>
+</html>
