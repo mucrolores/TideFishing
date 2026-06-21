@@ -17,8 +17,8 @@
     body{
       margin:0;font-family:system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif;
       color:var(--text);background:
-      radial-gradient(circle at 15% 0%,#12344b 0,transparent 34%),
-      linear-gradient(180deg,#07131f,#091923 70%);
+            radial-gradient(circle at 15% 0%,#12344b 0,transparent 34%),
+            linear-gradient(180deg,#07131f,#091923 70%);
     }
     button,input,textarea,select{font:inherit}
     button{border:0;border-radius:10px;padding:8px 12px;cursor:pointer;background:var(--accent);color:#052033;font-weight:760}
@@ -59,6 +59,11 @@
     .score{font-weight:800;color:var(--good)}
     .time{font-size:15px;font-weight:800;margin:3px 0}
     .why{color:var(--muted);font-size:11px;line-height:1.45}
+    .weather-row{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+    .weather-chip{font-size:10px;padding:3px 6px;border-radius:999px;background:#102d40;border:1px solid #28536d;color:#ccecff}
+    .weather-chip.good{border-color:#31805f;color:#82efb5;background:rgba(49,128,95,.14)}
+    .weather-chip.warn{border-color:#8d6f2a;color:#ffd77a;background:rgba(141,111,42,.14)}
+    .weather-chip.bad{border-color:#8c3c49;color:#ff9baa;background:rgba(140,60,73,.15)}
 
     .table-card{display:grid;grid-template-rows:auto minmax(0,1fr)}
     .table-wrap{overflow:auto;border-radius:11px;border:1px solid #1f4359;min-height:0}
@@ -153,7 +158,7 @@
     <h2>資料與地區設定</h2>
     <button id="closeSettingsBtn" class="secondary icon-btn" aria-label="關閉設定">×</button>
   </div>
-  <div class="note">使用中央氣象署 <b>F-A0021-001</b> 未來一個月潮汐預報。潮高採 AboveLocalMSL，並由公分換算為公尺。</div>
+  <div class="note">潮汐使用中央氣象署 <b>F-A0021-001</b>；新竹地區天氣使用 <b>F-D0047-055</b> 一週鄉鎮預報。潮高採 AboveLocalMSL，並由公分換算為公尺。</div>
 
   <div class="field">
     <label for="locationSelect">預報區域</label>
@@ -188,524 +193,712 @@
 </aside>
 
 <script>
-const TZ = 'Asia/Taipei';
-const WEEK = ['日','一','二','三','四','五','六'];
-let selectedDate = new Date();
-let chartWindowDays = 1;
-let events = makeDemoData();
+  const TZ = 'Asia/Taipei';
+  const WEEK = ['日','一','二','三','四','五','六'];
+  let selectedDate = new Date();
+  let chartWindowDays = 1;
+  let events = makeDemoData();
+  let weatherEntries = [];
+  let weatherLocationName = '';
 
-function isoLocal(d){
-  const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), day=String(d.getDate()).padStart(2,'0');
-  const h=String(d.getHours()).padStart(2,'0'), min=String(d.getMinutes()).padStart(2,'0');
-  return `${y}-${m}-${day}T${h}:${min}:00+08:00`;
-}
-function dateKey(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}
-function fmtDate(d){return `${d.getMonth()+1}/${d.getDate()}`}
-function fmtTime(d){return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`}
-function parseDate(s){return new Date(s)}
-
-function makeDemoData(){
-  const arr=[]; const base=new Date(); base.setHours(0,0,0,0);
-  // 明確標示為示範：只用來展示介面與演算法，不代表真實潮汐。
-  let highMinutes=10*60+25;
-  for(let i=0;i<21;i++){
-    const day=new Date(base); day.setDate(base.getDate()+i);
-    const shift=i*49;
-    const h1=(highMinutes+shift)%(24*60);
-    const l1=(h1+6*60+12)%(24*60);
-    const h2=(h1+12*60+25)%(24*60);
-    const l2=(h2+6*60+12)%(24*60);
-    [[h1,'滿潮',2.1+0.35*Math.sin(i/3)],[l1,'乾潮',0.45+0.18*Math.sin(i/4)],
-     [h2,'滿潮',2.0+0.30*Math.cos(i/3)],[l2,'乾潮',0.38+0.15*Math.cos(i/5)]]
-      .forEach(([mins,type,height])=>{
-        const d=new Date(day); d.setMinutes(mins);
-        if(mins>=1440)d.setDate(d.getDate()+1);
-        arr.push({datetime:isoLocal(d),type,height:+height.toFixed(2)});
-      });
+  function isoLocal(d){
+    const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), day=String(d.getDate()).padStart(2,'0');
+    const h=String(d.getHours()).padStart(2,'0'), min=String(d.getMinutes()).padStart(2,'0');
+    return `${y}-${m}-${day}T${h}:${min}:00+08:00`;
   }
-  return arr.sort((a,b)=>parseDate(a.datetime)-parseDate(b.datetime));
-}
+  function dateKey(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}
+  function fmtDate(d){return `${d.getMonth()+1}/${d.getDate()}`}
+  function fmtTime(d){return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`}
+  function parseDate(s){return new Date(s)}
 
-function scoreEvent(e){
-  if(e.type!=='滿潮') return null;
-  const d=parseDate(e.datetime), now=new Date();
-  const weekend=(d.getDay()===0||d.getDay()===6);
-  const hour=d.getHours()+d.getMinutes()/60;
-  const inWindow=hour>=12 && hour<=18;
-  const centerBonus=Math.max(0,1-Math.abs(hour-15)/3); // 15:00 最高
-  const daysAway=Math.max(0,(d-now)/(86400000));
-  const nearBonus=Math.max(0,1-daysAway/30);
-  let score=20;
-  if(weekend) score+=40;
-  if(inWindow) score+=25;
-  score+=Math.round(centerBonus*10);
-  score+=Math.round(nearBonus*5);
-  return Math.min(100,score);
-}
+  function makeDemoData(){
+    const arr=[]; const base=new Date(); base.setHours(0,0,0,0);
+    // 明確標示為示範：只用來展示介面與演算法，不代表真實潮汐。
+    let highMinutes=10*60+25;
+    for(let i=0;i<21;i++){
+      const day=new Date(base); day.setDate(base.getDate()+i);
+      const shift=i*49;
+      const h1=(highMinutes+shift)%(24*60);
+      const l1=(h1+6*60+12)%(24*60);
+      const h2=(h1+12*60+25)%(24*60);
+      const l2=(h2+6*60+12)%(24*60);
+      [[h1,'滿潮',2.1+0.35*Math.sin(i/3)],[l1,'乾潮',0.45+0.18*Math.sin(i/4)],
+        [h2,'滿潮',2.0+0.30*Math.cos(i/3)],[l2,'乾潮',0.38+0.15*Math.cos(i/5)]]
+              .forEach(([mins,type,height])=>{
+                const d=new Date(day); d.setMinutes(mins);
+                if(mins>=1440)d.setDate(d.getDate()+1);
+                arr.push({datetime:isoLocal(d),type,height:+height.toFixed(2)});
+              });
+    }
+    return arr.sort((a,b)=>parseDate(a.datetime)-parseDate(b.datetime));
+  }
 
-function recommendations(){
-  return events.filter(e=>e.type==='滿潮' && parseDate(e.datetime)>=new Date())
-    .map(e=>({...e,score:scoreEvent(e)}))
-    .sort((a,b)=>b.score-a.score || parseDate(a.datetime)-parseDate(b.datetime))
-    .slice(0,5);
-}
+  function scoreEvent(e){
+    if(e.type!=='滿潮') return null;
+    const d=parseDate(e.datetime), now=new Date();
+    const weekend=(d.getDay()===0||d.getDay()===6);
+    const hour=d.getHours()+d.getMinutes()/60;
+    const inWindow=hour>=12 && hour<=18;
+    const centerBonus=Math.max(0,1-Math.abs(hour-15)/3);
+    const daysAway=Math.max(0,(d-now)/(86400000));
+    const nearBonus=Math.max(0,1-daysAway/30);
+    let score=20;
+    if(weekend) score+=40;
+    if(inWindow) score+=25;
+    score+=Math.round(centerBonus*10);
+    score+=Math.round(nearBonus*5);
+    return Math.min(100,score);
+  }
 
-function renderRecommendations(){
-  const recs=recommendations(), box=document.getElementById('recommendList');
-  box.innerHTML='';
-  if(!recs.length){box.innerHTML='<div class="why">沒有可用的未來滿潮資料。</div>';return;}
-  const best=recs[0], bd=parseDate(best.datetime);
-  document.getElementById('bestDate').textContent=`${fmtDate(bd)}（${WEEK[bd.getDay()]}）`;
-  const arrival=new Date(bd.getTime()-90*60000);
-  document.getElementById('bestArrival').textContent=fmtTime(arrival);
-  document.getElementById('bestScore').textContent=best.score;
-  recs.forEach((r,i)=>{
-    const d=parseDate(r.datetime), arrival=new Date(d.getTime()-90*60000);
-    const weekend=d.getDay()===0||d.getDay()===6, h=d.getHours()+d.getMinutes()/60;
-    const reasons=[weekend?'週末':'平日',h>=12&&h<=18?'滿潮落在 12–18 時':'滿潮不在理想時窗',`建議滿潮前 90 分鐘抵達`];
-    const div=document.createElement('div'); div.className='rec '+(i===0?'top':'');
-    div.innerHTML=`<div class="rec-head"><b>${fmtDate(d)}（${WEEK[d.getDay()]}）</b><span class="score">${r.score} 分</span></div>
+  function weatherValueAt(type,date){
+    const t=date.getTime();
+    const candidates=weatherEntries.filter(x=>x.type===type);
+    const contained=candidates.find(x=>t>=x.start.getTime() && t<x.end.getTime());
+    if(contained) return contained;
+    let nearest=null, distance=Infinity;
+    candidates.forEach(x=>{
+      const delta=Math.abs(t-x.start.getTime());
+      if(delta<distance){distance=delta;nearest=x}
+    });
+    return distance<=12*3600000?nearest:null;
+  }
+
+  function conditionPoints(text){
+    const s=String(text||'');
+    if(/雷|豪雨|大雨|暴雨|冰雹/.test(s)) return 0;
+    if(/雨|陣雨/.test(s)) return /短暫|局部/.test(s)?17:9;
+    if(/霧/.test(s)) return 14;
+    if(/陰/.test(s)) return 23;
+    if(/多雲/.test(s)) return 27;
+    if(/晴/.test(s)) return 30;
+    return 20;
+  }
+
+  function getWeatherAssessment(date){
+    const rainEntry=weatherValueAt('rain',date);
+    const wxEntry=weatherValueAt('wx',date);
+    const windEntry=weatherValueAt('wind',date);
+    if(!rainEntry&&!wxEntry&&!windEntry) return null;
+
+    const rain=rainEntry?Number(rainEntry.value):null;
+    const wind=windEntry?Number(windEntry.value):null;
+    const wx=wxEntry?String(wxEntry.value):'';
+
+    const rainPoints=Number.isFinite(rain)?Math.max(0,50-rain*.5):30;
+    const wxPoints=wx?conditionPoints(wx):20;
+    let windPoints=12;
+    if(Number.isFinite(wind)){
+      windPoints=wind<=3?20:wind<=5?15:wind<=8?8:0;
+    }
+    const score=Math.round(Math.min(100,rainPoints+wxPoints+windPoints));
+    let comment='天氣條件普通';
+    if(score>=85) comment='天氣穩定，適合安排';
+    else if(score>=70) comment='天氣尚可，持續留意';
+    else if(score>=50) comment='天氣有變數，審慎評估';
+    else comment='天氣不佳，不建議前往';
+
+    return {score,rain:Number.isFinite(rain)?rain:null,wind:Number.isFinite(wind)?wind:null,wx,comment};
+  }
+
+  function assessEvent(e){
+    const tideScore=scoreEvent(e);
+    const weather=getWeatherAssessment(parseDate(e.datetime));
+    const totalScore=weather?Math.round(tideScore*.6+weather.score*.4):tideScore;
+    return {...e,tideScore,weather,score:totalScore};
+  }
+
+  function recommendations(){
+    return events.filter(e=>e.type==='滿潮' && parseDate(e.datetime)>=new Date())
+            .map(assessEvent)
+            .sort((a,b)=>b.score-a.score || parseDate(a.datetime)-parseDate(b.datetime))
+            .slice(0,5);
+  }
+
+  function chipClass(value,goodLimit,warnLimit,inverse=false){
+    if(value===null||value===undefined) return '';
+    if(inverse) return value<=goodLimit?'good':value<=warnLimit?'warn':'bad';
+    return value>=goodLimit?'good':value>=warnLimit?'warn':'bad';
+  }
+
+  function renderRecommendations(){
+    const recs=recommendations(), box=document.getElementById('recommendList');
+    box.innerHTML='';
+    if(!recs.length){box.innerHTML='<div class="why">沒有可用的未來滿潮資料。</div>';return;}
+    const best=recs[0], bd=parseDate(best.datetime);
+    document.getElementById('bestDate').textContent=`${fmtDate(bd)}（${WEEK[bd.getDay()]}）`;
+    const arrival=new Date(bd.getTime()-90*60000);
+    document.getElementById('bestArrival').textContent=fmtTime(arrival);
+    document.getElementById('bestScore').textContent=best.score;
+
+    recs.forEach((r,i)=>{
+      const d=parseDate(r.datetime), arrival=new Date(d.getTime()-90*60000);
+      const weekend=d.getDay()===0||d.getDay()===6, h=d.getHours()+d.getMinutes()/60;
+      const reasons=[
+        weekend?'週末':'平日',
+        h>=12&&h<=18?'滿潮落在 12–18 時':'滿潮不在理想時窗',
+        r.weather?r.weather.comment:'超出天氣預報範圍',
+        '建議滿潮前 90 分鐘抵達'
+      ];
+      const weatherHtml=r.weather
+              ? `<div class="weather-row">
+          <span class="weather-chip ${chipClass(r.weather.score,85,65)}">天氣 ${r.weather.score} 分</span>
+          <span class="weather-chip ${chipClass(r.weather.rain,20,50,true)}">降雨 ${r.weather.rain??'—'}%</span>
+          <span class="weather-chip">${r.weather.wx||'天氣現象未提供'}</span>
+          ${r.weather.wind!==null?`<span class="weather-chip ${chipClass(r.weather.wind,3,6,true)}">風速 ${r.weather.wind} m/s</span>`:''}
+          <span class="weather-chip">潮汐 ${r.tideScore} 分</span>
+        </div>`
+              : `<div class="weather-row"><span class="weather-chip warn">尚無一週天氣預報</span><span class="weather-chip">潮汐 ${r.tideScore} 分</span></div>`;
+      const div=document.createElement('div'); div.className='rec '+(i===0?'top':'');
+      div.innerHTML=`<div class="rec-head"><b>${fmtDate(d)}（${WEEK[d.getDay()]}）</b><span class="score">綜合 ${r.score} 分</span></div>
       <div class="time">${fmtTime(arrival)} 抵達 → ${fmtTime(d)} 滿潮</div>
-      <div class="why">${reasons.join('・')}</div>`;
-    box.appendChild(div);
-  });
-}
+      <div class="why">${reasons.join('・')}</div>${weatherHtml}`;
+      box.appendChild(div);
+    });
+  }
 
-function renderTable(){
-  const tbody=document.getElementById('tideTable'); tbody.innerHTML='';
-  events.filter(e=>parseDate(e.datetime)>=new Date(Date.now()-86400000)).slice(0,100).forEach(e=>{
-    const d=parseDate(e.datetime), score=scoreEvent(e);
-    const tr=document.createElement('tr');
-    tr.innerHTML=`<td>${dateKey(d)}</td><td>週${WEEK[d.getDay()]}</td><td>${fmtTime(d)}</td>
+  function renderTable(){
+    const tbody=document.getElementById('tideTable'); tbody.innerHTML='';
+    events.filter(e=>parseDate(e.datetime)>=new Date(Date.now()-86400000)).slice(0,100).forEach(e=>{
+      const d=parseDate(e.datetime), assessed=e.type==='滿潮'?assessEvent(e):null;
+      const score=assessed?.score??null;
+      const tr=document.createElement('tr');
+      tr.innerHTML=`<td>${dateKey(d)}</td><td>週${WEEK[d.getDay()]}</td><td>${fmtTime(d)}</td>
       <td><span class="pill ${e.type==='滿潮'?'high':'low'}">${e.type}</span></td>
       <td>${Number.isFinite(+e.height)?(+e.height).toFixed(2)+' m':'—'}</td>
       <td>${score===null?'—':score+' 分'}</td>`;
-    tbody.appendChild(tr);
-  });
-}
-
-let chart;
-let chartRenderSequence=0;
-
-function getChartRange(){
-  const start=new Date(selectedDate);
-  start.setHours(0,0,0,0);
-  const end=new Date(start);
-  end.setDate(end.getDate()+chartWindowDays);
-  return {start,end};
-}
-
-function interpolateRange(){
-  const {start,end}=getChartRange();
-  const all=events.map(e=>({...e,d:parseDate(e.datetime)})).sort((a,b)=>a.d-b.d);
-  const relevant=all.filter(e=>e.d>=new Date(start.getTime()-12*3600000)&&e.d<=new Date(end.getTime()+12*3600000));
-  const stepMinutes=chartWindowDays===1?15:(chartWindowDays===7?30:90);
-  const points=[];
-
-  for(let t=start.getTime();t<=end.getTime();t+=stepMinutes*60000){
-    let prev=null,next=null;
-    for(const e of relevant){
-      if(e.d.getTime()<=t) prev=e;
-      if(e.d.getTime()>t){next=e;break;}
-    }
-    if(!prev||!next) continue;
-    const p=(t-prev.d)/(next.d-prev.d);
-    const eased=(1-Math.cos(Math.PI*p))/2;
-    const y=(+prev.height)+((+next.height)-(+prev.height))*eased;
-    points.push({x:new Date(t),y:+y.toFixed(3)});
-  }
-  return points;
-}
-
-function formatChartTick(value){
-  if(value===undefined||value===null||Number.isNaN(Number(value))) return '';
-  const d=new Date(value);
-  if(chartWindowDays===1) return fmtTime(d);
-  if(chartWindowDays===7) return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:00`;
-  return `${d.getMonth()+1}/${d.getDate()}`;
-}
-
-function formatTooltipTitle(items){
-  if(!Array.isArray(items)||!items.length) return '';
-  const raw=items[0]?.raw;
-  if(!raw?.x) return '';
-  const d=new Date(raw.x);
-  return `${dateKey(d)}（週${WEEK[d.getDay()]}） ${fmtTime(d)}`;
-}
-
-
-const tideAnnotationsPlugin={
-  id:'tideAnnotations',
-  afterDatasetsDraw(chart,args,pluginOptions){
-    const {ctx,chartArea,scales}=chart;
-    const xScale=scales.x, yScale=scales.y;
-    if(!xScale||!yScale) return;
-
-    const recommended=pluginOptions?.recommended || [];
-    ctx.save();
-    ctx.font=chartWindowDays===30?'600 9px system-ui':'700 11px system-ui';
-    ctx.textBaseline='middle';
-
-    recommended.forEach((item,index)=>{
-      const d=parseDate(item.datetime);
-      const x=xScale.getPixelForValue(d.getTime());
-      const y=yScale.getPixelForValue(+item.height);
-      if(x<chartArea.left||x>chartArea.right||y<chartArea.top||y>chartArea.bottom) return;
-
-      const arrival=new Date(d.getTime()-90*60000);
-      const label=chartWindowDays===30
-        ? `★ ${d.getMonth()+1}/${d.getDate()} ${fmtTime(d)}`
-        : `★ 推薦 ${fmtTime(arrival)}抵達｜${fmtTime(d)}滿潮`;
-
-      const padX=6, boxH=chartWindowDays===30?18:22;
-      const textW=ctx.measureText(label).width;
-      const boxW=textW+padX*2;
-      let boxX=x-boxW/2;
-      let boxY=y-boxH-13-(index%2)*4;
-      boxX=Math.max(chartArea.left+3,Math.min(boxX,chartArea.right-boxW-3));
-      if(boxY<chartArea.top+3) boxY=y+13;
-
-      ctx.strokeStyle='rgba(101,230,165,.85)';
-      ctx.lineWidth=1.5;
-      ctx.beginPath();
-      ctx.moveTo(x,y-3);
-      ctx.lineTo(x,boxY>y?boxY:boxY+boxH);
-      ctx.stroke();
-
-      ctx.fillStyle='rgba(7,31,35,.94)';
-      ctx.strokeStyle='#65e6a5';
-      ctx.lineWidth=1;
-      ctx.beginPath();
-      ctx.roundRect(boxX,boxY,boxW,boxH,6);
-      ctx.fill();
-      ctx.stroke();
-
-      ctx.fillStyle='#9ff4c6';
-      ctx.fillText(label,boxX+padX,boxY+boxH/2);
-
-      ctx.fillStyle='#65e6a5';
-      ctx.beginPath();
-      ctx.arc(x,y,chartWindowDays===30?4:5,0,Math.PI*2);
-      ctx.fill();
-      ctx.strokeStyle='#06251b';
-      ctx.lineWidth=1.5;
-      ctx.stroke();
+      tbody.appendChild(tr);
     });
-    ctx.restore();
   }
-};
 
-function renderChart(){
-  const renderSequence=++chartRenderSequence;
-  const {start,end}=getChartRange();
-  const rangeEvents=events.filter(e=>{
-    const d=parseDate(e.datetime);
-    return d>=start && d<end;
-  });
-  const lineData=interpolateRange();
-  const recommendedInRange=recommendations().filter(e=>{
-    const d=parseDate(e.datetime);
-    return d>=start && d<end;
-  });
-  const pointRadius=chartWindowDays===1?7:(chartWindowDays===7?4:2.5);
-  const maxTicks=chartWindowDays===1?9:(chartWindowDays===7?8:10);
-  const ctx=document.getElementById('tideChart');
+  let chart;
+  let chartRenderSequence=0;
 
-  document.querySelectorAll('.window-btn').forEach(btn=>{
-    btn.classList.toggle('active',Number(btn.dataset.days)===chartWindowDays);
-  });
-
-  // 自動載入、切換視窗或更新地區可能在很短時間內連續觸發 renderChart。
-  // 不只依賴本地 chart 變數，直接向 Chart.js 查詢此 canvas 是否已有實例並先銷毀。
-  const existingChart=Chart.getChart(ctx);
-  if(existingChart){
-    existingChart.destroy();
+  function getChartRange(){
+    const start=new Date(selectedDate);
+    start.setHours(0,0,0,0);
+    const end=new Date(start);
+    end.setDate(end.getDate()+chartWindowDays);
+    return {start,end};
   }
-  if(chart && chart!==existingChart){
-    try{chart.destroy();}catch(_err){}
+
+  function interpolateRange(){
+    const {start,end}=getChartRange();
+    const all=events.map(e=>({...e,d:parseDate(e.datetime)})).sort((a,b)=>a.d-b.d);
+    const relevant=all.filter(e=>e.d>=new Date(start.getTime()-12*3600000)&&e.d<=new Date(end.getTime()+12*3600000));
+    const stepMinutes=chartWindowDays===1?15:(chartWindowDays===7?30:90);
+    const points=[];
+
+    for(let t=start.getTime();t<=end.getTime();t+=stepMinutes*60000){
+      let prev=null,next=null;
+      for(const e of relevant){
+        if(e.d.getTime()<=t) prev=e;
+        if(e.d.getTime()>t){next=e;break;}
+      }
+      if(!prev||!next) continue;
+      const p=(t-prev.d)/(next.d-prev.d);
+      const eased=(1-Math.cos(Math.PI*p))/2;
+      const y=(+prev.height)+((+next.height)-(+prev.height))*eased;
+      points.push({x:new Date(t),y:+y.toFixed(3)});
+    }
+    return points;
   }
-  chart=null;
 
-  // 若在準備資料期間已有更新的 renderChart 呼叫，放棄這次較舊的繪圖。
-  if(renderSequence!==chartRenderSequence) return;
+  function formatChartTick(value){
+    if(value===undefined||value===null||Number.isNaN(Number(value))) return '';
+    const d=new Date(value);
+    if(chartWindowDays===1) return fmtTime(d);
+    if(chartWindowDays===7) return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:00`;
+    return `${d.getMonth()+1}/${d.getDate()}`;
+  }
 
-  chart=new Chart(ctx,{
-    type:'line',
-    plugins:[tideAnnotationsPlugin],
-    data:{
-      datasets:[
-        {label:'推估潮位',data:lineData,borderColor:'#5bd2ff',backgroundColor:'rgba(91,210,255,.12)',fill:true,tension:.32,pointRadius:0,borderWidth:chartWindowDays===30?1.7:2.5},
-        {label:'滿潮',data:rangeEvents.filter(e=>e.type==='滿潮').map(e=>({x:parseDate(e.datetime),y:+e.height})),showLine:false,pointRadius,pointHoverRadius:pointRadius+2,pointBackgroundColor:'#5bd2ff'},
-        {label:'乾潮',data:rangeEvents.filter(e=>e.type==='乾潮').map(e=>({x:parseDate(e.datetime),y:+e.height})),showLine:false,pointRadius,pointHoverRadius:pointRadius+2,pointBackgroundColor:'#ffb86b'}
-      ]
-    },
-    options:{
-      responsive:true,maintainAspectRatio:false,
-      interaction:{mode:'nearest',intersect:false},
-      plugins:{
-        legend:{labels:{color:'#d9efff'}},
-        tooltip:{callbacks:{title:formatTooltipTitle}},
-        tideAnnotations:{recommended:recommendedInRange}
+  function formatTooltipTitle(items){
+    if(!Array.isArray(items)||!items.length) return '';
+    const raw=items[0]?.raw;
+    if(!raw?.x) return '';
+    const d=new Date(raw.x);
+    return `${dateKey(d)}（週${WEEK[d.getDay()]}） ${fmtTime(d)}`;
+  }
+
+
+  const tideAnnotationsPlugin={
+    id:'tideAnnotations',
+    afterDatasetsDraw(chart,args,pluginOptions){
+      const {ctx,chartArea,scales}=chart;
+      const xScale=scales.x, yScale=scales.y;
+      if(!xScale||!yScale) return;
+
+      const recommended=pluginOptions?.recommended || [];
+      ctx.save();
+      ctx.font=chartWindowDays===30?'600 9px system-ui':'700 11px system-ui';
+      ctx.textBaseline='middle';
+
+      recommended.forEach((item,index)=>{
+        const d=parseDate(item.datetime);
+        const x=xScale.getPixelForValue(d.getTime());
+        const y=yScale.getPixelForValue(+item.height);
+        if(x<chartArea.left||x>chartArea.right||y<chartArea.top||y>chartArea.bottom) return;
+
+        const arrival=new Date(d.getTime()-90*60000);
+        const label=chartWindowDays===30
+                ? `★ ${d.getMonth()+1}/${d.getDate()} ${fmtTime(d)}`
+                : `★ 推薦 ${fmtTime(arrival)}抵達｜${fmtTime(d)}滿潮`;
+
+        const padX=6, boxH=chartWindowDays===30?18:22;
+        const textW=ctx.measureText(label).width;
+        const boxW=textW+padX*2;
+        let boxX=x-boxW/2;
+        let boxY=y-boxH-13-(index%2)*4;
+        boxX=Math.max(chartArea.left+3,Math.min(boxX,chartArea.right-boxW-3));
+        if(boxY<chartArea.top+3) boxY=y+13;
+
+        ctx.strokeStyle='rgba(101,230,165,.85)';
+        ctx.lineWidth=1.5;
+        ctx.beginPath();
+        ctx.moveTo(x,y-3);
+        ctx.lineTo(x,boxY>y?boxY:boxY+boxH);
+        ctx.stroke();
+
+        ctx.fillStyle='rgba(7,31,35,.94)';
+        ctx.strokeStyle='#65e6a5';
+        ctx.lineWidth=1;
+        ctx.beginPath();
+        ctx.roundRect(boxX,boxY,boxW,boxH,6);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle='#9ff4c6';
+        ctx.fillText(label,boxX+padX,boxY+boxH/2);
+
+        ctx.fillStyle='#65e6a5';
+        ctx.beginPath();
+        ctx.arc(x,y,chartWindowDays===30?4:5,0,Math.PI*2);
+        ctx.fill();
+        ctx.strokeStyle='#06251b';
+        ctx.lineWidth=1.5;
+        ctx.stroke();
+      });
+      ctx.restore();
+    }
+  };
+
+  function renderChart(){
+    const renderSequence=++chartRenderSequence;
+    const {start,end}=getChartRange();
+    const rangeEvents=events.filter(e=>{
+      const d=parseDate(e.datetime);
+      return d>=start && d<end;
+    });
+    const lineData=interpolateRange();
+    const recommendedInRange=recommendations().filter(e=>{
+      const d=parseDate(e.datetime);
+      return d>=start && d<end;
+    });
+    const pointRadius=chartWindowDays===1?7:(chartWindowDays===7?4:2.5);
+    const maxTicks=chartWindowDays===1?9:(chartWindowDays===7?8:10);
+    const ctx=document.getElementById('tideChart');
+
+    document.querySelectorAll('.window-btn').forEach(btn=>{
+      btn.classList.toggle('active',Number(btn.dataset.days)===chartWindowDays);
+    });
+
+    // 自動載入、切換視窗或更新地區可能在很短時間內連續觸發 renderChart。
+    // 不只依賴本地 chart 變數，直接向 Chart.js 查詢此 canvas 是否已有實例並先銷毀。
+    const existingChart=Chart.getChart(ctx);
+    if(existingChart){
+      existingChart.destroy();
+    }
+    if(chart && chart!==existingChart){
+      try{chart.destroy();}catch(_err){}
+    }
+    chart=null;
+
+    // 若在準備資料期間已有更新的 renderChart 呼叫，放棄這次較舊的繪圖。
+    if(renderSequence!==chartRenderSequence) return;
+
+    chart=new Chart(ctx,{
+      type:'line',
+      plugins:[tideAnnotationsPlugin],
+      data:{
+        datasets:[
+          {label:'推估潮位',data:lineData,borderColor:'#5bd2ff',backgroundColor:'rgba(91,210,255,.12)',fill:true,tension:.32,pointRadius:0,borderWidth:chartWindowDays===30?1.7:2.5},
+          {label:'滿潮',data:rangeEvents.filter(e=>e.type==='滿潮').map(e=>({x:parseDate(e.datetime),y:+e.height})),showLine:false,pointRadius,pointHoverRadius:pointRadius+2,pointBackgroundColor:'#5bd2ff'},
+          {label:'乾潮',data:rangeEvents.filter(e=>e.type==='乾潮').map(e=>({x:parseDate(e.datetime),y:+e.height})),showLine:false,pointRadius,pointHoverRadius:pointRadius+2,pointBackgroundColor:'#ffb86b'}
+        ]
       },
-      scales:{
-        x:{
-          type:'linear',min:start.getTime(),max:end.getTime(),
-          afterBuildTicks:(scale)=>{
-            const ticks=[];
-            const stepHours=chartWindowDays===1?3:(chartWindowDays===7?12:24);
-            const cursor=new Date(start);
-            cursor.setMinutes(0,0,0);
-            if(chartWindowDays!==1) cursor.setHours(0);
-            while(cursor.getTime()<=end.getTime()){
-              ticks.push({value:cursor.getTime()});
-              cursor.setHours(cursor.getHours()+stepHours);
-            }
-            scale.ticks=ticks;
-          },
-          ticks:{
-            callback:formatChartTick,maxTicksLimit:maxTicks,maxRotation:0,
-            color:(context)=>{
-              const value=context?.tick?.value;
-              if(value===undefined||value===null) return '#91adbf';
-              const d=new Date(value);
-              return d.getHours()===0&&d.getMinutes()===0?'#eaf6ff':'#91adbf';
-            },
-            font:(context)=>{
-              const value=context?.tick?.value;
-              if(value===undefined||value===null) return {weight:'400',size:11};
-              const d=new Date(value);
-              return d.getHours()===0&&d.getMinutes()===0?{weight:'800',size:12}:{weight:'400',size:11};
-            }
-          },
-          grid:{
-            color:(context)=>{
-              const value=context?.tick?.value;
-              if(value===undefined||value===null) return 'rgba(72,113,137,.16)';
-              const d=new Date(value);
-              return d.getHours()===0&&d.getMinutes()===0?'rgba(234,246,255,.58)':'rgba(72,113,137,.16)';
-            },
-            lineWidth:(context)=>{
-              const value=context?.tick?.value;
-              if(value===undefined||value===null) return 1;
-              const d=new Date(value);
-              return d.getHours()===0&&d.getMinutes()===0?2:1;
-            }
-          }
+      options:{
+        responsive:true,maintainAspectRatio:false,
+        interaction:{mode:'nearest',intersect:false},
+        plugins:{
+          legend:{labels:{color:'#d9efff'}},
+          tooltip:{callbacks:{title:formatTooltipTitle}},
+          tideAnnotations:{recommended:recommendedInRange}
         },
-        y:{title:{display:true,text:'潮高（m）',color:'#91adbf'},ticks:{color:'#91adbf'},grid:{color:'rgba(72,113,137,.18)'}}
+        scales:{
+          x:{
+            type:'linear',min:start.getTime(),max:end.getTime(),
+            afterBuildTicks:(scale)=>{
+              const ticks=[];
+              const stepHours=chartWindowDays===1?3:(chartWindowDays===7?12:24);
+              const cursor=new Date(start);
+              cursor.setMinutes(0,0,0);
+              if(chartWindowDays!==1) cursor.setHours(0);
+              while(cursor.getTime()<=end.getTime()){
+                ticks.push({value:cursor.getTime()});
+                cursor.setHours(cursor.getHours()+stepHours);
+              }
+              scale.ticks=ticks;
+            },
+            ticks:{
+              callback:formatChartTick,maxTicksLimit:maxTicks,maxRotation:0,
+              color:(context)=>{
+                const value=context?.tick?.value;
+                if(value===undefined||value===null) return '#91adbf';
+                const d=new Date(value);
+                return d.getHours()===0&&d.getMinutes()===0?'#eaf6ff':'#91adbf';
+              },
+              font:(context)=>{
+                const value=context?.tick?.value;
+                if(value===undefined||value===null) return {weight:'400',size:11};
+                const d=new Date(value);
+                return d.getHours()===0&&d.getMinutes()===0?{weight:'800',size:12}:{weight:'400',size:11};
+              }
+            },
+            grid:{
+              color:(context)=>{
+                const value=context?.tick?.value;
+                if(value===undefined||value===null) return 'rgba(72,113,137,.16)';
+                const d=new Date(value);
+                return d.getHours()===0&&d.getMinutes()===0?'rgba(234,246,255,.58)':'rgba(72,113,137,.16)';
+              },
+              lineWidth:(context)=>{
+                const value=context?.tick?.value;
+                if(value===undefined||value===null) return 1;
+                const d=new Date(value);
+                return d.getHours()===0&&d.getMinutes()===0?2:1;
+              }
+            }
+          },
+          y:{title:{display:true,text:'潮高（m）',color:'#91adbf'},ticks:{color:'#91adbf'},grid:{color:'rgba(72,113,137,.18)'}}
+        }
       }
+    });
+
+    const rangeLabel=chartWindowDays===1
+            ? `${dateKey(start)}（週${WEEK[start.getDay()]}）`
+            : `${dateKey(start)}～${dateKey(new Date(end.getTime()-1))}`;
+    document.getElementById('chartStatus').textContent=
+            `${rangeLabel}，共 ${rangeEvents.length} 筆高低潮事件；${recommendedInRange.length} 個推薦時段已標註。粗亮垂直線代表每日 00:00。`;
+  }
+  function renderAll(){renderChart();renderRecommendations();renderTable()}
+
+  function normalizeType(v){
+    const s=String(v??'');
+    if(/滿|high/i.test(s)) return '滿潮';
+    if(/乾|低|low/i.test(s)) return '乾潮';
+    return null;
+  }
+  function parseNormalized(data){
+    if(!Array.isArray(data)) throw new Error('最外層必須是陣列');
+    return data.map(x=>({
+      datetime:x.datetime||x.dateTime||x.DateTime||x.time,
+      type:normalizeType(x.type||x.tide||x.Tide||x.tideType||x.TideType),
+      height:Number(x.height??x.tideHeight??x.TideHeight??x.value)
+    })).filter(x=>x.datetime&&x.type&&Number.isFinite(x.height))
+            .sort((a,b)=>parseDate(a.datetime)-parseDate(b.datetime));
+  }
+  function deepExtractOfficial(obj, targetId, targetName){
+    const out=[];
+    const heightKeys=['AboveLocalMSL','aboveLocalMSL','AboveTWVD','aboveTWVD','AboveChartDatum','aboveChartDatum'];
+
+    function readLocation(v, inherited){
+      if(!v || typeof v!=='object') return inherited;
+      const directLocation=(v.Location && typeof v.Location==='object') ? v.Location : null;
+      const name=v.LocationName ?? v.locationName ?? directLocation?.LocationName ?? directLocation?.locationName ?? inherited?.name ?? '';
+      const id=String(v.LocationId ?? v.locationId ?? directLocation?.LocationId ?? directLocation?.locationId ?? inherited?.id ?? '');
+      return {name:String(name), id};
     }
-  });
 
-  const rangeLabel=chartWindowDays===1
-    ? `${dateKey(start)}（週${WEEK[start.getDay()]}）`
-    : `${dateKey(start)}～${dateKey(new Date(end.getTime()-1))}`;
-  document.getElementById('chartStatus').textContent=
-    `${rangeLabel}，共 ${rangeEvents.length} 筆高低潮事件；${recommendedInRange.length} 個推薦時段已標註。粗亮垂直線代表每日 00:00。`;
-}
-function renderAll(){renderChart();renderRecommendations();renderTable()}
+    function findHeight(v){
+      if(!v || typeof v!=='object') return null;
+      for(const key of heightKeys){
+        if(v[key]!==undefined && v[key]!==null && v[key]!==''){
+          const n=Number(v[key]);
+          if(Number.isFinite(n)) return {value:n,key};
+        }
+      }
+      // 官方目前常把潮高包在 TideHeights 物件或陣列中。
+      const containers=[v.TideHeights,v.tideHeights,v.TideHeight,v.tideHeight];
+      for(const c of containers){
+        if(!c) continue;
+        const list=Array.isArray(c)?c:[c];
+        for(const item of list){
+          const found=findHeight(item);
+          if(found) return found;
+        }
+      }
+      return null;
+    }
 
-function normalizeType(v){
-  const s=String(v??'');
-  if(/滿|high/i.test(s)) return '滿潮';
-  if(/乾|低|low/i.test(s)) return '乾潮';
-  return null;
-}
-function parseNormalized(data){
-  if(!Array.isArray(data)) throw new Error('最外層必須是陣列');
-  return data.map(x=>({
-    datetime:x.datetime||x.dateTime||x.DateTime||x.time,
-    type:normalizeType(x.type||x.tide||x.Tide||x.tideType||x.TideType),
-    height:Number(x.height??x.tideHeight??x.TideHeight??x.value)
-  })).filter(x=>x.datetime&&x.type&&Number.isFinite(x.height))
-    .sort((a,b)=>parseDate(a.datetime)-parseDate(b.datetime));
-}
-function deepExtractOfficial(obj, targetId, targetName){
-  const out=[];
-  const heightKeys=['AboveLocalMSL','aboveLocalMSL','AboveTWVD','aboveTWVD','AboveChartDatum','aboveChartDatum'];
+    function walk(v, inheritedLocation=null, inheritedRange=''){
+      if(!v || typeof v!=='object') return;
+      if(Array.isArray(v)){v.forEach(x=>walk(x,inheritedLocation,inheritedRange));return;}
 
-  function readLocation(v, inherited){
-    if(!v || typeof v!=='object') return inherited;
-    const directLocation=(v.Location && typeof v.Location==='object') ? v.Location : null;
-    const name=v.LocationName ?? v.locationName ?? directLocation?.LocationName ?? directLocation?.locationName ?? inherited?.name ?? '';
-    const id=String(v.LocationId ?? v.locationId ?? directLocation?.LocationId ?? directLocation?.locationId ?? inherited?.id ?? '');
-    return {name:String(name), id};
+      const location=readLocation(v,inheritedLocation);
+      const tideRange=v.TideRange ?? v.tideRange ?? inheritedRange;
+      const datetime=v.DateTime ?? v.dateTime ?? v.datetime;
+      const tide=v.Tide ?? v.tide ?? v.TideType ?? v.tideType;
+      const height=findHeight(v);
+      const locationMatched=(location.id===String(targetId)) || location.name===targetName || location.name.includes(targetName);
+
+      if(datetime && tide && height && locationMatched){
+        const type=normalizeType(tide);
+        if(type){
+          // F-A0021-001 的潮高欄位單位為公分，統一換算成公尺。
+          out.push({
+            datetime:String(datetime), type,
+            height:height.value/100,
+            tideRange:String(tideRange || ''),
+            locationName:location.name,
+            locationId:location.id,
+            heightDatum:height.key
+          });
+        }
+      }
+      Object.values(v).forEach(child=>walk(child,location,tideRange));
+    }
+
+    walk(obj);
+    const unique=new Map();
+    out.forEach(e=>unique.set(`${e.datetime}|${e.type}`,e));
+    return [...unique.values()].sort((a,b)=>parseDate(a.datetime)-parseDate(b.datetime));
   }
 
-  function findHeight(v){
-    if(!v || typeof v!=='object') return null;
-    for(const key of heightKeys){
-      if(v[key]!==undefined && v[key]!==null && v[key]!==''){
-        const n=Number(v[key]);
-        if(Number.isFinite(n)) return {value:n,key};
+  document.getElementById('prevBtn').onclick=()=>{selectedDate.setDate(selectedDate.getDate()-chartWindowDays);renderChart()};
+  document.getElementById('nextBtn').onclick=()=>{selectedDate.setDate(selectedDate.getDate()+chartWindowDays);renderChart()};
+  document.getElementById('todayBtn').onclick=()=>{selectedDate=new Date();renderChart()};
+  document.querySelectorAll('.window-btn').forEach(btn=>{
+    btn.onclick=()=>{
+      chartWindowDays=Number(btn.dataset.days);
+      selectedDate=new Date();
+      renderChart();
+    };
+  });
+  document.getElementById('demoBtn').onclick=()=>{events=makeDemoData();weatherEntries=[];weatherLocationName='';selectedDate=new Date();document.getElementById('dataBadge').textContent='目前：示範資料';renderAll()};
+  document.getElementById('loadJsonBtn').onclick=()=>{
+    try{
+      const parsed=parseNormalized(JSON.parse(document.getElementById('jsonInput').value));
+      if(parsed.length<2) throw new Error('至少需要兩筆含時間、潮別與潮高的資料');
+      events=parsed; weatherEntries=[]; weatherLocationName=''; selectedDate=parseDate(events[0].datetime);
+      document.getElementById('dataBadge').textContent='目前：自訂資料';
+      document.getElementById('loadStatus').textContent=`成功載入 ${events.length} 筆資料。`;
+      renderAll();
+      setSettingsOpen(false);
+    }catch(err){document.getElementById('loadStatus').textContent='載入失敗：'+err.message}
+  };
+  const apiKeyInput=document.getElementById('apiKey');
+  const locationSelect=document.getElementById('locationSelect');
+  const customLocationField=document.getElementById('customLocationField');
+  const customLocationName=document.getElementById('customLocationName');
+  const settingsPanel=document.getElementById('settingsPanel');
+  const settingsOverlay=document.getElementById('settingsOverlay');
+
+  function setSettingsOpen(open){
+    settingsPanel.classList.toggle('open',open);
+    settingsOverlay.classList.toggle('open',open);
+    settingsPanel.setAttribute('aria-hidden',String(!open));
+  }
+  document.getElementById('settingsBtn').onclick=()=>setSettingsOpen(true);
+  document.getElementById('closeSettingsBtn').onclick=()=>setSettingsOpen(false);
+  settingsOverlay.onclick=()=>setSettingsOpen(false);
+  document.addEventListener('keydown',e=>{if(e.key==='Escape')setSettingsOpen(false)});
+
+  apiKeyInput.value=localStorage.getItem('cwaApiKey') || '';
+  const savedLocation=localStorage.getItem('cwaTideLocation') || 'I00300';
+  const savedCustomName=localStorage.getItem('cwaCustomTideLocation') || '';
+  locationSelect.value=[...locationSelect.options].some(o=>o.value===savedLocation)?savedLocation:'custom';
+  customLocationName.value=savedCustomName;
+  customLocationField.hidden=locationSelect.value!=='custom';
+
+  document.getElementById('clearKeyBtn').onclick=()=>{
+    localStorage.removeItem('cwaApiKey');
+    apiKeyInput.value='';
+    document.getElementById('loadStatus').textContent='已清除這台瀏覽器儲存的授權碼。';
+  };
+
+
+  function extractScalar(value){
+    if(value===null||value===undefined) return null;
+    if(typeof value==='string'||typeof value==='number') return value;
+    if(Array.isArray(value)){
+      for(const item of value){
+        const v=extractScalar(item);
+        if(v!==null&&v!=='') return v;
       }
+      return null;
     }
-    // 官方目前常把潮高包在 TideHeights 物件或陣列中。
-    const containers=[v.TideHeights,v.tideHeights,v.TideHeight,v.tideHeight];
-    for(const c of containers){
-      if(!c) continue;
-      const list=Array.isArray(c)?c:[c];
-      for(const item of list){
-        const found=findHeight(item);
-        if(found) return found;
+    if(typeof value==='object'){
+      const preferred=['ProbabilityOfPrecipitation','Weather','WeatherDescription','WindSpeed','Value','value','Measures'];
+      for(const key of preferred){
+        if(value[key]!==undefined){
+          const v=extractScalar(value[key]);
+          if(v!==null&&v!=='') return v;
+        }
+      }
+      for(const v0 of Object.values(value)){
+        const v=extractScalar(v0);
+        if(v!==null&&v!=='') return v;
       }
     }
     return null;
   }
 
-  function walk(v, inheritedLocation=null, inheritedRange=''){
-    if(!v || typeof v!=='object') return;
-    if(Array.isArray(v)){v.forEach(x=>walk(x,inheritedLocation,inheritedRange));return;}
+  function parseWeatherForecast(data,targetName='北區'){
+    const locations=[];
+    function findLocations(v){
+      if(!v||typeof v!=='object') return;
+      if(Array.isArray(v)){v.forEach(findLocations);return;}
+      const name=String(v.LocationName??v.locationName??'');
+      const elements=v.WeatherElement??v.weatherElement;
+      if(name && elements) locations.push({name,elements});
+      Object.values(v).forEach(findLocations);
+    }
+    findLocations(data);
+    const location=locations.find(x=>x.name===targetName)||locations.find(x=>x.name.includes(targetName));
+    if(!location) return [];
 
-    const location=readLocation(v,inheritedLocation);
-    const tideRange=v.TideRange ?? v.tideRange ?? inheritedRange;
-    const datetime=v.DateTime ?? v.dateTime ?? v.datetime;
-    const tide=v.Tide ?? v.tide ?? v.TideType ?? v.tideType;
-    const height=findHeight(v);
-    const locationMatched=(location.id===String(targetId)) || location.name===targetName || location.name.includes(targetName);
+    const entries=[];
+    const elements=Array.isArray(location.elements)?location.elements:[location.elements];
+    elements.forEach(el=>{
+      const name=String(el.ElementName??el.elementName??el.WeatherElementName??'');
+      let type=null;
+      if(/PoP|降雨機率/i.test(name)) type='rain';
+      else if(/^Wx$|天氣現象/i.test(name)) type='wx';
+      else if(/^WS$|WindSpeed|風速/i.test(name)) type='wind';
+      if(!type) return;
 
-    if(datetime && tide && height && locationMatched){
-      const type=normalizeType(tide);
-      if(type){
-        // F-A0021-001 的潮高欄位單位為公分，統一換算成公尺。
-        out.push({
-          datetime:String(datetime), type,
-          height:height.value/100,
-          tideRange:String(tideRange || ''),
-          locationName:location.name,
-          locationId:location.id,
-          heightDatum:height.key
-        });
+      const times=el.Time??el.time??el.TimePeriod??[];
+      (Array.isArray(times)?times:[times]).forEach(item=>{
+        if(!item||typeof item!=='object') return;
+        const startRaw=item.StartTime??item.startTime??item.DataTime??item.dataTime;
+        const endRaw=item.EndTime??item.endTime;
+        if(!startRaw) return;
+        const start=new Date(startRaw);
+        const end=endRaw?new Date(endRaw):new Date(start.getTime()+6*3600000);
+        let value=extractScalar(item.ElementValue??item.elementValue??item);
+        if(type==='rain'||type==='wind'){
+          const match=String(value??'').match(/-?\d+(?:\.\d+)?/);
+          value=match?Number(match[0]):null;
+        }
+        if(value!==null&&value!=='') entries.push({type,start,end,value});
+      });
+    });
+    return entries;
+  }
+
+  async function fetchWeatherForecast(key){
+    const params=new URLSearchParams({
+      Authorization:key,
+      format:'JSON',
+      LocationName:'北區'
+    });
+    const url=`https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-D0047-055?${params}`;
+    const res=await fetch(url,{headers:{Accept:'application/json'}});
+    if(!res.ok) throw new Error(`天氣 API 回應 HTTP ${res.status}`);
+    const data=await res.json();
+    if(data.success===false) throw new Error(data.message||'天氣 API 回報失敗');
+    const parsed=parseWeatherForecast(data,'北區');
+    if(!parsed.length) throw new Error('找不到新竹市北區天氣資料');
+    weatherEntries=parsed;
+    weatherLocationName='新竹市北區';
+    return parsed;
+  }
+
+  async function fetchOfficialData({auto=false}={}){
+    const key=apiKeyInput.value.trim();
+    if(!key){
+      document.getElementById('loadStatus').textContent='請先輸入中央氣象署 API 授權碼。';
+      if(auto) document.getElementById('dataBadge').textContent='目前：示範資料';
+      return;
+    }
+    const option=locationSelect.selectedOptions[0];
+    const isCustom=locationSelect.value==='custom';
+    const targetId=isCustom?'':locationSelect.value;
+    const targetName=(isCustom?customLocationName.value:option.dataset.name).trim();
+    const status=document.getElementById('loadStatus');
+    if(!targetName){status.textContent='請輸入中央氣象署使用的官方地區名稱。';return;}
+    status.textContent=`正在向中央氣象署載入「${targetName}」資料…`;
+    if(auto) document.getElementById('dataBadge').textContent=`載入中：${targetName}`;
+    try{
+      localStorage.setItem('cwaApiKey',key);
+      localStorage.setItem('cwaTideLocation',isCustom?'custom':targetId);
+      if(isCustom) localStorage.setItem('cwaCustomTideLocation',targetName);
+      const params=new URLSearchParams({Authorization:key,format:'JSON',LocationName:targetName});
+      let url=`https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-A0021-001?${params}`;
+      let res=await fetch(url,{headers:{Accept:'application/json'}});
+      if(!res.ok) throw new Error(`API 回應 HTTP ${res.status}`);
+      let data=await res.json();
+      if(data.success===false) throw new Error(data.message || '中央氣象署 API 回報失敗');
+
+      let parsed=deepExtractOfficial(data,targetId,targetName);
+      // 若 LocationName 篩選沒有回傳資料，再抓完整資料集後於前端比對地點。
+      if(parsed.length<2){
+        const fallbackParams=new URLSearchParams({Authorization:key,format:'JSON'});
+        url=`https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-A0021-001?${fallbackParams}`;
+        res=await fetch(url,{headers:{Accept:'application/json'}});
+        if(!res.ok) throw new Error(`完整資料 API 回應 HTTP ${res.status}`);
+        data=await res.json();
+        parsed=deepExtractOfficial(data,targetId,targetName);
       }
+      if(parsed.length<2) throw new Error(`回傳內容中找不到「${targetName}」的滿乾潮資料。`);
+
+      events=parsed;
+
+      let weatherMessage='；未載入天氣資料';
+      const isHsinchuLocation=targetId==='I00300'||targetId==='10018020'||/新竹|南寮/.test(targetName);
+      if(isHsinchuLocation){
+        try{
+          await fetchWeatherForecast(key);
+          weatherMessage=`；已載入${weatherLocationName}一週天氣`;
+        }catch(weatherErr){
+          console.warn('Weather forecast load failed:',weatherErr);
+          weatherEntries=[];
+          weatherLocationName='';
+          weatherMessage=`；天氣載入失敗：${weatherErr.message}`;
+        }
+      }else{
+        weatherEntries=[];
+        weatherLocationName='';
+        weatherMessage='；自訂潮汐地區暫未自動對應天氣資料集';
+      }
+
+      const todayKey=dateKey(new Date());
+      const todayEvent=events.find(e=>dateKey(parseDate(e.datetime))===todayKey);
+      selectedDate=todayEvent ? parseDate(todayEvent.datetime) : parseDate(events[0].datetime);
+      document.getElementById('dataBadge').textContent=`真實資料：${targetName}`;
+      const first=parseDate(events[0].datetime), last=parseDate(events.at(-1).datetime);
+      status.textContent=`載入成功：${events.length} 筆，範圍 ${dateKey(first)}～${dateKey(last)}；潮高基準為當地平均海平面${weatherMessage}。`;
+      renderAll();
+      if(!auto) setSettingsOpen(false);
+    }catch(err){
+      console.error(err);
+      status.textContent='真實資料載入失敗：'+err.message+'。請確認授權碼與網路連線；若直接以 file:// 開啟遭瀏覽器限制，可改用本機 HTTP server。';
+      if(auto) document.getElementById('dataBadge').textContent='自動載入失敗';
     }
-    Object.values(v).forEach(child=>walk(child,location,tideRange));
   }
 
-  walk(obj);
-  const unique=new Map();
-  out.forEach(e=>unique.set(`${e.datetime}|${e.type}`,e));
-  return [...unique.values()].sort((a,b)=>parseDate(a.datetime)-parseDate(b.datetime));
-}
-
-document.getElementById('prevBtn').onclick=()=>{selectedDate.setDate(selectedDate.getDate()-chartWindowDays);renderChart()};
-document.getElementById('nextBtn').onclick=()=>{selectedDate.setDate(selectedDate.getDate()+chartWindowDays);renderChart()};
-document.getElementById('todayBtn').onclick=()=>{selectedDate=new Date();renderChart()};
-document.querySelectorAll('.window-btn').forEach(btn=>{
-  btn.onclick=()=>{
-    chartWindowDays=Number(btn.dataset.days);
-    selectedDate=new Date();
-    renderChart();
+  document.getElementById('fetchBtn').onclick=()=>fetchOfficialData();
+  locationSelect.onchange=()=>{
+    customLocationField.hidden=locationSelect.value!=='custom';
+    localStorage.setItem('cwaTideLocation',locationSelect.value);
   };
-});
-document.getElementById('demoBtn').onclick=()=>{events=makeDemoData();selectedDate=new Date();document.getElementById('dataBadge').textContent='目前：示範資料';renderAll()};
-document.getElementById('loadJsonBtn').onclick=()=>{
-  try{
-    const parsed=parseNormalized(JSON.parse(document.getElementById('jsonInput').value));
-    if(parsed.length<2) throw new Error('至少需要兩筆含時間、潮別與潮高的資料');
-    events=parsed; selectedDate=parseDate(events[0].datetime);
-    document.getElementById('dataBadge').textContent='目前：自訂資料';
-    document.getElementById('loadStatus').textContent=`成功載入 ${events.length} 筆資料。`;
-    renderAll();
-    setSettingsOpen(false);
-  }catch(err){document.getElementById('loadStatus').textContent='載入失敗：'+err.message}
-};
-const apiKeyInput=document.getElementById('apiKey');
-const locationSelect=document.getElementById('locationSelect');
-const customLocationField=document.getElementById('customLocationField');
-const customLocationName=document.getElementById('customLocationName');
-const settingsPanel=document.getElementById('settingsPanel');
-const settingsOverlay=document.getElementById('settingsOverlay');
+  customLocationName.onchange=()=>localStorage.setItem('cwaCustomTideLocation',customLocationName.value.trim());
 
-function setSettingsOpen(open){
-  settingsPanel.classList.toggle('open',open);
-  settingsOverlay.classList.toggle('open',open);
-  settingsPanel.setAttribute('aria-hidden',String(!open));
-}
-document.getElementById('settingsBtn').onclick=()=>setSettingsOpen(true);
-document.getElementById('closeSettingsBtn').onclick=()=>setSettingsOpen(false);
-settingsOverlay.onclick=()=>setSettingsOpen(false);
-document.addEventListener('keydown',e=>{if(e.key==='Escape')setSettingsOpen(false)});
+  renderAll();
 
-apiKeyInput.value=localStorage.getItem('cwaApiKey') || '';
-const savedLocation=localStorage.getItem('cwaTideLocation') || 'I00300';
-const savedCustomName=localStorage.getItem('cwaCustomTideLocation') || '';
-locationSelect.value=[...locationSelect.options].some(o=>o.value===savedLocation)?savedLocation:'custom';
-customLocationName.value=savedCustomName;
-customLocationField.hidden=locationSelect.value!=='custom';
-
-document.getElementById('clearKeyBtn').onclick=()=>{
-  localStorage.removeItem('cwaApiKey');
-  apiKeyInput.value='';
-  document.getElementById('loadStatus').textContent='已清除這台瀏覽器儲存的授權碼。';
-};
-
-async function fetchOfficialData({auto=false}={}){
-  const key=apiKeyInput.value.trim();
-  if(!key){
-    document.getElementById('loadStatus').textContent='請先輸入中央氣象署 API 授權碼。';
-    if(auto) document.getElementById('dataBadge').textContent='目前：示範資料';
-    return;
+  if(apiKeyInput.value.trim()){
+    // 讓畫面先完成初始渲染，再以 localStorage 中的設定自動載入真實資料。
+    setTimeout(()=>fetchOfficialData({auto:true}),0);
   }
-  const option=locationSelect.selectedOptions[0];
-  const isCustom=locationSelect.value==='custom';
-  const targetId=isCustom?'':locationSelect.value;
-  const targetName=(isCustom?customLocationName.value:option.dataset.name).trim();
-  const status=document.getElementById('loadStatus');
-  if(!targetName){status.textContent='請輸入中央氣象署使用的官方地區名稱。';return;}
-  status.textContent=`正在向中央氣象署載入「${targetName}」資料…`;
-  if(auto) document.getElementById('dataBadge').textContent=`載入中：${targetName}`;
-  try{
-    localStorage.setItem('cwaApiKey',key);
-    localStorage.setItem('cwaTideLocation',isCustom?'custom':targetId);
-    if(isCustom) localStorage.setItem('cwaCustomTideLocation',targetName);
-    const params=new URLSearchParams({Authorization:key,format:'JSON',LocationName:targetName});
-    let url=`https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-A0021-001?${params}`;
-    let res=await fetch(url,{headers:{Accept:'application/json'}});
-    if(!res.ok) throw new Error(`API 回應 HTTP ${res.status}`);
-    let data=await res.json();
-    if(data.success===false) throw new Error(data.message || '中央氣象署 API 回報失敗');
-
-    let parsed=deepExtractOfficial(data,targetId,targetName);
-    // 若 LocationName 篩選沒有回傳資料，再抓完整資料集後於前端比對地點。
-    if(parsed.length<2){
-      const fallbackParams=new URLSearchParams({Authorization:key,format:'JSON'});
-      url=`https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-A0021-001?${fallbackParams}`;
-      res=await fetch(url,{headers:{Accept:'application/json'}});
-      if(!res.ok) throw new Error(`完整資料 API 回應 HTTP ${res.status}`);
-      data=await res.json();
-      parsed=deepExtractOfficial(data,targetId,targetName);
-    }
-    if(parsed.length<2) throw new Error(`回傳內容中找不到「${targetName}」的滿乾潮資料。`);
-
-    events=parsed;
-    const todayKey=dateKey(new Date());
-    const todayEvent=events.find(e=>dateKey(parseDate(e.datetime))===todayKey);
-    selectedDate=todayEvent ? parseDate(todayEvent.datetime) : parseDate(events[0].datetime);
-    document.getElementById('dataBadge').textContent=`真實資料：${targetName}`;
-    const first=parseDate(events[0].datetime), last=parseDate(events.at(-1).datetime);
-    status.textContent=`載入成功：${events.length} 筆，範圍 ${dateKey(first)}～${dateKey(last)}；潮高基準為當地平均海平面。`;
-    renderAll();
-    if(!auto) setSettingsOpen(false);
-  }catch(err){
-    console.error(err);
-    status.textContent='真實資料載入失敗：'+err.message+'。請確認授權碼與網路連線；若直接以 file:// 開啟遭瀏覽器限制，可改用本機 HTTP server。';
-    if(auto) document.getElementById('dataBadge').textContent='自動載入失敗';
-  }
-}
-
-document.getElementById('fetchBtn').onclick=()=>fetchOfficialData();
-locationSelect.onchange=()=>{
-  customLocationField.hidden=locationSelect.value!=='custom';
-  localStorage.setItem('cwaTideLocation',locationSelect.value);
-};
-customLocationName.onchange=()=>localStorage.setItem('cwaCustomTideLocation',customLocationName.value.trim());
-
-renderAll();
-
-if(apiKeyInput.value.trim()){
-  // 讓畫面先完成初始渲染，再以 localStorage 中的設定自動載入真實資料。
-  setTimeout(()=>fetchOfficialData({auto:true}),0);
-}
 </script>
 </body>
 </html>
